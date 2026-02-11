@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
 import type { Profile } from '../types';
 import { extractVoiceFeatures, compareVoiceFeatures } from '../utils/audioUtils';
+import { showToast } from '../utils/toast';
 
 export const useVoiceRecognition = (
-  profiles: Profile[], 
+  profiles: Profile[],
   autoStart: boolean = true,
   onAutoRecognized?: (person: Profile, similarity: number) => void
 ) => {
@@ -12,25 +13,29 @@ export const useVoiceRecognition = (
   const [audioStream, setAudioStream] = useState<MediaStream | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const recognitionRef = useRef<any>(null);
+  const recognitionRef = useRef<SpeechRecognition | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const autoRecognizeRef = useRef(false);
 
   const startListening = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ 
+      const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
           echoCancellation: true,
           noiseSuppression: true,
           autoGainControl: true
-        } 
+        }
       });
       setAudioStream(stream);
       setIsListening(true);
       setStatusMessage('Listening... Say "hello"');
       autoRecognizeRef.current = true;
+
+      // Close previous AudioContext if it exists to prevent memory leaks
+      if (audioContextRef.current) {
+        audioContextRef.current.close();
+      }
 
       // Set up audio context for voice activity detection
       const audioContext = new AudioContext();
@@ -43,22 +48,20 @@ export const useVoiceRecognition = (
       analyserRef.current = analyser;
 
       // Set up Web Speech API for automatic detection
-      if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-        const recognition = new SpeechRecognition();
+      if (window.SpeechRecognition || window.webkitSpeechRecognition) {
+        const SpeechRecognitionCtor = window.SpeechRecognition || window.webkitSpeechRecognition!;
+        const recognition = new SpeechRecognitionCtor();
         recognition.continuous = true;
         recognition.interimResults = false;
         recognition.lang = 'en-US';
 
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        recognition.onresult = async (event: any) => {
+        recognition.onresult = async (event: SpeechRecognitionEvent) => {
           const transcript = event.results[event.results.length - 1][0].transcript.toLowerCase();
           if ((transcript.includes('hello') || transcript.includes('hi') || transcript.includes('hey')) && autoRecognizeRef.current && !isProcessing) {
             autoRecognizeRef.current = false;
             setIsProcessing(true);
             setStatusMessage('Detected "hello"! Processing...');
-            
+
             // Record audio and recognize
             try {
               const audioBuffer = await recordAudioWithMediaRecorder(stream);
@@ -66,8 +69,7 @@ export const useVoiceRecognition = (
               if (result.person && onAutoRecognized) {
                 onAutoRecognized(result.person, result.similarity);
               }
-            } catch (error) {
-              console.error('Auto-recognition error:', error);
+            } catch {
               setStatusMessage('Error recognizing voice. Try again.');
               setIsProcessing(false);
               autoRecognizeRef.current = true;
@@ -75,9 +77,7 @@ export const useVoiceRecognition = (
           }
         };
 
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        recognition.onerror = (event: any) => {
-          console.error('Speech recognition error:', event.error);
+        recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
           if (event.error !== 'no-speech') {
             setStatusMessage('Listening... (speech recognition error)');
           }
@@ -95,23 +95,18 @@ export const useVoiceRecognition = (
 
       // Also set up voice activity detection as backup
       startVoiceActivityDetection(analyser);
-    } catch (err) {
-      console.error('Error accessing microphone:', err);
-      alert('Unable to access microphone. Please check permissions.');
+    } catch {
+      showToast('Unable to access microphone. Please check permissions.', 'error');
       setIsListening(false);
     }
   };
 
   const startVoiceActivityDetection = (analyser: AnalyserNode) => {
-    // Voice activity detection as backup (currently using Web Speech API as primary)
-    // This can be enhanced later for better detection
     const dataArray = new Uint8Array(analyser.frequencyBinCount);
-    
+
     const checkVoiceActivity = () => {
       if (!isListening || isProcessing) return;
-
       analyser.getByteFrequencyData(dataArray);
-      // Can be used for visual feedback or as backup detection
       requestAnimationFrame(checkVoiceActivity);
     };
 
@@ -163,13 +158,11 @@ export const useVoiceRecognition = (
     setStatusMessage('Analyzing voice...');
 
     try {
-      // Extract features from the recorded audio
       const voiceFeatures = await extractVoiceFeatures(audioBuffer);
 
-      // Compare with all stored profiles
       let bestMatch: Profile | null = null;
       let bestSimilarity = 0;
-      const threshold = 0.4; // Lower threshold for better recognition
+      const threshold = 0.4;
 
       for (const profile of profiles) {
         if (profile.voiceFeatures) {
@@ -195,8 +188,7 @@ export const useVoiceRecognition = (
         autoRecognizeRef.current = true;
         return { person: null, similarity: 0 };
       }
-    } catch (error) {
-      console.error('Error recognizing voice:', error);
+    } catch {
       setStatusMessage('Error analyzing voice. Try again.');
       setIsProcessing(false);
       autoRecognizeRef.current = true;
@@ -210,9 +202,9 @@ export const useVoiceRecognition = (
         const mediaRecorder = new MediaRecorder(stream, {
           mimeType: 'audio/webm;codecs=opus'
         });
-        
+
         const audioChunks: Blob[] = [];
-        
+
         mediaRecorder.ondataavailable = (event) => {
           if (event.data.size > 0) {
             audioChunks.push(event.data);
@@ -228,25 +220,22 @@ export const useVoiceRecognition = (
             audioContext.close();
             resolve(audioBuffer);
           } catch (error) {
-            console.error('Error processing audio:', error);
             reject(error);
           }
         };
 
-        mediaRecorder.onerror = (event) => {
-          console.error('MediaRecorder error:', event);
+        mediaRecorder.onerror = () => {
           reject(new Error('Recording failed'));
         };
 
         mediaRecorder.start();
-        
+
         setTimeout(() => {
           if (mediaRecorder.state !== 'inactive') {
             mediaRecorder.stop();
           }
         }, duration);
       } catch (error) {
-        console.error('Error creating MediaRecorder:', error);
         reject(error);
       }
     });
@@ -269,4 +258,3 @@ export const useVoiceRecognition = (
     recordAudio,
   };
 };
-

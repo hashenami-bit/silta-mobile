@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import type { CameraMode } from '../types';
+import { showToast } from '../utils/toast';
 
 type FacingMode = 'user' | 'environment';
 
@@ -23,7 +24,7 @@ export const useCamera = () => {
       }
 
       const stream = await navigator.mediaDevices.getUserMedia({ 
-        video: { facingMode: facing, width: 640, height: 480 } // Lower res is faster for JS
+        video: { facingMode: facing, width: { ideal: 640 }, height: { ideal: 480 } }
       });
       setCameraStream(stream);
       setCameraMode(mode);
@@ -31,9 +32,8 @@ export const useCamera = () => {
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
       }
-    } catch (err) {
-      console.error('Error accessing camera:', err);
-      alert('Unable to access camera.');
+    } catch {
+      showToast('Unable to access camera.', 'error');
     }
   };
 

@@ -1,6 +1,7 @@
 import { useState, useRef } from 'react';
 import * as faceapi from 'face-api.js';
 import type { Screen, Profile, NewProfile, UserProfile, VoiceContext } from './types';
+import { showToast } from './utils/toast';
 import { useModels } from './hooks/useModels';
 import { useCamera } from './hooks/useCamera';
 import { useFaceDetection } from './hooks/useFaceDetection';
@@ -54,7 +55,7 @@ const SiltaMVP = () => {
   const [voiceSimilarity, setVoiceSimilarity] = useState<number>(0);
   const [capturedVoiceContext, setCapturedVoiceContext] = useState<VoiceContext | null>(null);
 
-  const modelsLoaded = useModels();
+  const { modelsLoaded, error: modelError, isRetrying: modelRetrying, retry: retryModels } = useModels();
   const { cameraStream, cameraMode, facingMode, videoRef, startCamera, stopCamera, switchCamera } = useCamera();
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   
@@ -118,9 +119,8 @@ const SiltaMVP = () => {
       if (!isConversationRecording) {
         try {
           await startConversationRecording();
-          console.log('Conversation recording started');
-        } catch (error) {
-          console.error('Failed to start conversation recording:', error);
+        } catch {
+          // Failed to start conversation recording
         }
       }
     }, 500);
@@ -132,10 +132,8 @@ const SiltaMVP = () => {
 
   const saveConversationToProfiles = async () => {
     if (isConversationRecording) {
-      console.log('Stopping conversation recording...');
       const conversation = await stopConversationRecording();
       if (conversation && conversation.segments.length > 0) {
-        console.log('Saving conversation to profiles:', conversation);
         
         // If we have recognized faces, try to match segments to them
         // Otherwise, save conversation to all profiles that were visible during recording
@@ -184,7 +182,6 @@ const SiltaMVP = () => {
         
         if (hasUpdates) {
           setProfiles(updatedProfiles);
-          console.log('Profiles updated with conversation');
           return true;
         } else {
           // If we have segments but no matching profiles, save to the first profile with a face descriptor
@@ -208,15 +205,12 @@ const SiltaMVP = () => {
                   : p
               );
               setProfiles(updatedProfiles2);
-              console.log('Conversation saved to first recognized profile');
               return true;
             }
           }
-          console.log('No matching profiles found, but conversation was recorded');
           return true; // Still return true since conversation was recorded
         }
       } else {
-        console.log('No conversation segments to save');
         return false;
       }
     }
@@ -226,19 +220,15 @@ const SiltaMVP = () => {
   const handleEndConversation = async () => {
     const saved = await saveConversationToProfiles();
     if (saved) {
-      alert('Conversation saved to profiles!');
-      // Optionally restart recording for next conversation
-      if (!isConversationRecording) {
-        setTimeout(async () => {
-          try {
-            await startConversationRecording();
-          } catch (error) {
-            console.error('Failed to restart conversation recording:', error);
-          }
-        }, 500);
+      showToast('Conversation saved to profiles!', 'success');
+      // Restart recording only after save fully completes and state has settled
+      try {
+        await startConversationRecording();
+      } catch {
+        // Silently fail - user can manually trigger next recording
       }
     } else {
-      alert('No conversation segments were recorded. Make sure you are speaking and microphone permissions are granted.');
+      showToast('No conversation segments were recorded. Make sure you are speaking and microphone permissions are granted.', 'error');
     }
   };
 
@@ -324,7 +314,7 @@ const SiltaMVP = () => {
   const handleEditProfile = (profile: Profile) => {
     // Check if user has face descriptor set up
     if (!userProfile.faceDescriptor) {
-      alert('Please set up face ID in your profile first to enable editing.');
+      showToast('Please set up face ID in your profile first to enable editing.', 'info');
       return;
     }
     // Require face verification before editing
@@ -336,7 +326,7 @@ const SiltaMVP = () => {
   const handleDeleteProfile = (profileId: number) => {
     // Check if user has face descriptor set up
     if (!userProfile.faceDescriptor) {
-      alert('Please set up face ID in your profile first to enable deleting.');
+      showToast('Please set up face ID in your profile first to enable deleting.', 'info');
       return;
     }
     // Require face verification before deleting
@@ -376,9 +366,8 @@ const SiltaMVP = () => {
         setVoiceRecognizedPerson(result.person);
         setVoiceSimilarity(result.similarity);
       }
-    } catch (error) {
-      console.error('Error recognizing voice:', error);
-      alert('Error recognizing voice. Please try again.');
+    } catch {
+      showToast('Error recognizing voice. Please try again.', 'error');
     }
   };
 
@@ -427,7 +416,7 @@ const SiltaMVP = () => {
   const handleResetFaceID = () => {
     if (window.confirm('Are you sure you want to reset your Face ID? You will need to set it up again to edit or delete profiles.')) {
       handleUserProfileUpdate({ faceDescriptor: null });
-      alert('Face ID has been reset. You can set it up again by taking a new photo in your profile.');
+      showToast('Face ID has been reset. You can set it up again by taking a new photo in your profile.', 'success');
     }
   };
 
@@ -446,7 +435,7 @@ const SiltaMVP = () => {
     );
 
     // Threshold for face match (lower is more strict)
-    const threshold = 0.6;
+    const threshold = 0.5;
     const isMatch = distance < threshold;
 
     stopCamera();
@@ -474,14 +463,14 @@ const SiltaMVP = () => {
       setPendingOperation(null);
     } else {
       // Verification failed
-      alert('Face verification failed. Access denied.');
+      showToast('Face verification failed. Access denied.', 'error');
       setScreen('profiles');
       setPendingOperation(null);
     }
   };
 
   if (!modelsLoaded) {
-    return <LoadingScreen />;
+    return <LoadingScreen error={modelError} isRetrying={modelRetrying} onRetry={retryModels} />;
   }
 
   if (screen === 'home') {

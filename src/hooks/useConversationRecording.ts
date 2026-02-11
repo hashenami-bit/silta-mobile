@@ -1,15 +1,15 @@
 import { useState, useRef } from 'react';
 import type { Profile, Conversation, ConversationSegment } from '../types';
 import { extractVoiceFeatures, compareVoiceFeatures } from '../utils/audioUtils';
+import { showToast } from '../utils/toast';
 
 export const useConversationRecording = (profiles: Profile[]) => {
   const [isRecording, setIsRecording] = useState(false);
   const [currentConversation, setCurrentConversation] = useState<Conversation | null>(null);
-  const [activeSpeakers, setActiveSpeakers] = useState<Map<number, number>>(new Map()); // profileId -> segment count
+  const [activeSpeakers, setActiveSpeakers] = useState<Map<number, number>>(new Map());
   const audioStreamRef = useRef<MediaStream | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const recognitionRef = useRef<any>(null);
+  const recognitionRef = useRef<SpeechRecognition | null>(null);
   const segmentsRef = useRef<ConversationSegment[]>([]);
   const startTimeRef = useRef<number>(0);
   const lastSpeakerRef = useRef<number | null>(null);
@@ -37,23 +37,21 @@ export const useConversationRecording = (profiles: Profile[]) => {
         profileId: bestMatch?.id || null,
         confidence: bestSimilarity
       };
-    } catch (error) {
-      console.error('Error identifying speaker:', error);
+    } catch {
       return { profileId: null, confidence: 0 };
     }
   };
 
   const generateSummary = (segments: ConversationSegment[]): string => {
     if (segments.length === 0) return 'No conversation recorded.';
-    
+
     const speakers = new Set(segments.map(s => s.speakerName).filter(Boolean));
     const allText = segments.map(s => s.text).join(' ');
     const words = allText.toLowerCase()
       .split(/\s+/)
       .filter(word => word.length > 3)
       .filter(word => !['the', 'and', 'that', 'this', 'with', 'from', 'have', 'were', 'been'].includes(word));
-    
-    // Get most common words as topics
+
     const wordCounts = new Map<string, number>();
     words.forEach(word => {
       wordCounts.set(word, (wordCounts.get(word) || 0) + 1);
@@ -65,10 +63,10 @@ export const useConversationRecording = (profiles: Profile[]) => {
       .join(', ');
 
     const speakerNames = Array.from(speakers);
-    const speakerText = speakerNames.length > 0 
+    const speakerText = speakerNames.length > 0
       ? `Conversation with ${speakerNames.join(' and ')}. `
       : 'Conversation recorded. ';
-    
+
     const summary = speakerText +
       (topics ? `Main topics: ${topics}. ` : '') +
       `Total segments: ${segments.length}.`;
@@ -92,28 +90,22 @@ export const useConversationRecording = (profiles: Profile[]) => {
       setIsRecording(true);
       segmentsRef.current = [];
       currentSegmentRef.current = '';
-      // Use a timestamp function to avoid linter warnings
       const getTimestamp = () => Date.now();
       startTimeRef.current = getTimestamp();
       lastSpeakerRef.current = null;
 
-      // Set up Web Speech API for continuous transcription
-      if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-        const recognition = new SpeechRecognition();
+      if (window.SpeechRecognition || window.webkitSpeechRecognition) {
+        const SpeechRecognitionCtor = window.SpeechRecognition || window.webkitSpeechRecognition!;
+        const recognition = new SpeechRecognitionCtor();
         recognition.continuous = true;
         recognition.interimResults = true;
         recognition.lang = 'en-US';
 
-        // Use refs to access from stopRecording
         currentSegmentRef.current = '';
-        // Use a timestamp function to avoid linter warnings
         const getTimestamp = () => Date.now();
         let segmentStartTime = getTimestamp();
 
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        recognition.onresult = async (event: any) => {
+        recognition.onresult = async (event: SpeechRecognitionEvent) => {
           let finalTranscript = '';
 
           for (let i = event.resultIndex; i < event.results.length; i++) {
@@ -125,25 +117,21 @@ export const useConversationRecording = (profiles: Profile[]) => {
 
           if (finalTranscript.trim()) {
             currentSegmentRef.current += finalTranscript;
-            
-            // Check for speaker change (silence or pause) or segment length
+
             const getTimestamp = () => Date.now();
             const now = getTimestamp();
             const timeSinceLastSegment = (now - segmentStartTime) / 1000;
 
-            // Process segment if enough time passed or segment is long enough
-            // Lower threshold to capture more segments
             if (timeSinceLastSegment > 1.0 || currentSegmentRef.current.length > 30) {
               const segmentText = currentSegmentRef.current.trim();
-              
+
               if (segmentText.length > 0) {
                 try {
-                  // Try to identify speaker
                   const audioBuffer = await captureAudioSegment(stream, 2000);
                   const { profileId, confidence } = await identifySpeaker(audioBuffer);
-                  
+
                   const profile = profileId ? profiles.find(p => p.id === profileId) : null;
-                  
+
                   const segment: ConversationSegment = {
                     speakerId: profileId,
                     speakerName: profile?.name || null,
@@ -153,9 +141,7 @@ export const useConversationRecording = (profiles: Profile[]) => {
                   };
 
                   segmentsRef.current.push(segment);
-                  console.log('Conversation segment added:', segment);
-                  
-                  // Update active speakers
+
                   if (profileId) {
                     setActiveSpeakers(prev => {
                       const newMap = new Map(prev);
@@ -163,10 +149,9 @@ export const useConversationRecording = (profiles: Profile[]) => {
                       return newMap;
                     });
                   } else {
-                    // Track unknown speakers too
                     setActiveSpeakers(prev => {
                       const newMap = new Map(prev);
-                      newMap.set(-1, (newMap.get(-1) || 0) + 1); // Use -1 for unknown
+                      newMap.set(-1, (newMap.get(-1) || 0) + 1);
                       return newMap;
                     });
                   }
@@ -174,9 +159,8 @@ export const useConversationRecording = (profiles: Profile[]) => {
                   currentSegmentRef.current = '';
                   segmentStartTime = getTimestamp();
                   lastSpeakerRef.current = profileId;
-                } catch (error) {
-                  console.error('Error processing segment:', error);
-                  // Always save the segment even if speaker identification fails
+                } catch {
+                  // Save segment even if speaker identification fails
                   const segment: ConversationSegment = {
                     speakerId: null,
                     speakerName: null,
@@ -185,11 +169,9 @@ export const useConversationRecording = (profiles: Profile[]) => {
                     confidence: 0
                   };
                   segmentsRef.current.push(segment);
-                  console.log('Conversation segment added (unknown speaker):', segment);
                   currentSegmentRef.current = '';
                   segmentStartTime = getTimestamp();
-                  
-                  // Track unknown speakers
+
                   setActiveSpeakers(prev => {
                     const newMap = new Map(prev);
                     newMap.set(-1, (newMap.get(-1) || 0) + 1);
@@ -201,9 +183,8 @@ export const useConversationRecording = (profiles: Profile[]) => {
           }
         };
 
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        recognition.onerror = (event: any) => {
-          console.error('Speech recognition error:', event.error);
+        recognition.onerror = () => {
+          // Speech recognition error - will auto-restart via onend
         };
 
         recognition.onend = () => {
@@ -222,12 +203,11 @@ export const useConversationRecording = (profiles: Profile[]) => {
           mimeType: 'audio/webm;codecs=opus'
         });
         mediaRecorderRef.current = mediaRecorder;
-      } catch (error) {
-        console.warn('MediaRecorder not supported:', error);
+      } catch {
+        // MediaRecorder not supported
       }
-    } catch (error) {
-      console.error('Error starting conversation recording:', error);
-      alert('Unable to start conversation recording. Please check microphone permissions.');
+    } catch {
+      showToast('Unable to start conversation recording. Please check microphone permissions.', 'error');
     }
   };
 
@@ -287,8 +267,8 @@ export const useConversationRecording = (profiles: Profile[]) => {
     if (recognitionRef.current) {
       try {
         recognitionRef.current.stop();
-      } catch (e) {
-        console.error('Error stopping recognition:', e);
+      } catch {
+        // Already stopped
       }
       recognitionRef.current = null;
     }
@@ -301,15 +281,14 @@ export const useConversationRecording = (profiles: Profile[]) => {
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
       try {
         mediaRecorderRef.current.stop();
-      } catch (e) {
-        console.error('Error stopping media recorder:', e);
+      } catch {
+        // Already stopped
       }
     }
 
     // Process final segment if any remaining text
     const segments = [...segmentsRef.current];
-    
-    // Process any remaining text in currentSegmentRef
+
     if (currentSegmentRef.current.trim().length > 0) {
       const finalText = currentSegmentRef.current.trim();
       if (finalText.length > 0) {
@@ -318,67 +297,57 @@ export const useConversationRecording = (profiles: Profile[]) => {
             const audioBuffer = await captureAudioSegment(streamRef.current, 1000);
             const { profileId, confidence } = await identifySpeaker(audioBuffer);
             const profile = profileId ? profiles.find(p => p.id === profileId) : null;
-            
+
             const finalSegment: ConversationSegment = {
               speakerId: profileId,
               speakerName: profile?.name || null,
               text: finalText,
-              timestamp: ((() => Date.now())() - startTimeRef.current) / 1000,
+              timestamp: (Date.now() - startTimeRef.current) / 1000,
               confidence
             };
-            
+
             segments.push(finalSegment);
-            console.log('Final conversation segment added:', finalSegment);
           } else {
-            // No stream available, save as unknown
             const finalSegment: ConversationSegment = {
               speakerId: null,
               speakerName: null,
               text: finalText,
-              timestamp: ((() => Date.now())() - startTimeRef.current) / 1000,
+              timestamp: (Date.now() - startTimeRef.current) / 1000,
               confidence: 0
             };
             segments.push(finalSegment);
-            console.log('Final conversation segment added (unknown):', finalSegment);
           }
-        } catch (e) {
-          console.log('Could not process final segment, saving as unknown:', e);
-          // Save as unknown speaker
+        } catch {
           const finalSegment: ConversationSegment = {
             speakerId: null,
             speakerName: null,
             text: finalText,
-            timestamp: ((() => Date.now())() - startTimeRef.current) / 1000,
+            timestamp: (Date.now() - startTimeRef.current) / 1000,
             confidence: 0
           };
           segments.push(finalSegment);
-          console.log('Final conversation segment added (unknown):', finalSegment);
         }
         currentSegmentRef.current = '';
       }
     }
-    
-    console.log('Stopping recording, segments count:', segments.length);
-    
+
     if (segments.length === 0) {
-      console.log('No segments recorded');
       return null;
     }
 
     const summary = generateSummary(segments);
     const participants = Array.from(new Set(segments.map(s => s.speakerId).filter((id): id is number => id !== null)));
 
-    const getTimestamp = () => Date.now();
+    const now = Date.now();
     const conversation: Conversation = {
-      id: getTimestamp(),
+      id: now,
       startTime: startTimeRef.current,
-      endTime: getTimestamp(),
+      endTime: now,
       segments,
       summary,
       participants
     };
 
-    console.log('Conversation created:', conversation);
     setCurrentConversation(conversation);
     return conversation;
   };
@@ -391,4 +360,3 @@ export const useConversationRecording = (profiles: Profile[]) => {
     stopRecording,
   };
 };
-

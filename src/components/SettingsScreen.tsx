@@ -1,4 +1,5 @@
 import { ArrowLeft, Trash2, Info, AlertTriangle } from 'lucide-react';
+import { showToast } from '../utils/toast';
 
 interface SettingsScreenProps {
   onBack: () => void;
@@ -9,7 +10,7 @@ export const SettingsScreen = ({ onBack, onClearAllData }: SettingsScreenProps) 
   const handleClearData = () => {
     if (window.confirm('Are you sure you want to clear all data? This will delete all saved people and cannot be undone.')) {
       onClearAllData();
-      alert('All data has been cleared.');
+      showToast('All data has been cleared.', 'success');
     }
   };
 
@@ -80,8 +81,8 @@ export const SettingsScreen = ({ onBack, onClearAllData }: SettingsScreenProps) 
               <div>
                 <h3 className="font-semibold text-gray-900 mb-2">Privacy Notice</h3>
                 <p className="text-sm text-gray-700">
-                  All face recognition and data processing happens locally in your browser. 
-                  No data is sent to external servers. Your photos and face descriptors are 
+                  All face recognition and data processing happens locally in your browser.
+                  No data is sent to external servers. Your photos and face descriptors are
                   stored only on your device and are cleared when you reload the page.
                 </p>
               </div>
@@ -92,4 +93,3 @@ export const SettingsScreen = ({ onBack, onClearAllData }: SettingsScreenProps) 
     </div>
   );
 };
-

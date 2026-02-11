@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import * as faceapi from 'face-api.js';
 import { createImageFromBase64 } from '../utils/imageUtils';
+import { showToast } from '../utils/toast';
 
 export const useProfileCapture = () => {
   const [capturedPhoto, setCapturedPhoto] = useState<string | null>(null);
@@ -17,14 +18,14 @@ export const useProfileCapture = () => {
     const ctx = canvasElement.getContext('2d');
     if (!ctx) return;
     ctx.drawImage(videoElement, 0, 0);
-    const photoData = canvasElement.toDataURL('image/jpeg');
+    const photoData = canvasElement.toDataURL('image/jpeg', 0.7);
 
     // AI Detection
     const img = await createImageFromBase64(photoData);
     const detection = await faceapi.detectSingleFace(img).withFaceLandmarks().withFaceDescriptor();
 
     if (!detection) {
-      alert("No face detected! Please ensure your face is clearly visible.");
+      showToast('No face detected! Please ensure your face is clearly visible.', 'error');
       setStatusMessage("");
       return;
     }

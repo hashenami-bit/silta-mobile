@@ -98,8 +98,8 @@ export const useFaceDetection = (
           } else {
             setFaceBox(null);
           }
-        } catch (err) {
-          console.error("Detection error:", err);
+        } catch {
+          // Detection error - skip frame
         } finally {
           isProcessing.current = false; // Unlock
         }

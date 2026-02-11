@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { VoiceFeatures, VoiceContext } from '../types';
 import { extractVoiceFeatures, analyzeVoiceContext } from '../utils/audioUtils';
+import { showToast } from '../utils/toast';
 
 export const useVoiceCapture = () => {
   const [isRecording, setIsRecording] = useState(false);
@@ -13,9 +14,8 @@ export const useVoiceCapture = () => {
       setAudioStream(stream);
       setIsRecording(true);
       setStatusMessage('Recording... Say "hello"');
-    } catch (err) {
-      console.error('Error accessing microphone:', err);
-      alert('Unable to access microphone. Please check permissions.');
+    } catch {
+      showToast('Unable to access microphone. Please check permissions.', 'error');
       setIsRecording(false);
     }
   };
@@ -33,7 +33,7 @@ export const useVoiceCapture = () => {
     onCaptured: (features: VoiceFeatures, context: VoiceContext) => void
   ): Promise<void> => {
     if (!audioStream) {
-      alert('Please start recording first');
+      showToast('Please start recording first', 'info');
       return;
     }
 
@@ -42,31 +42,36 @@ export const useVoiceCapture = () => {
     try {
       // Record audio
       const audioBuffer = await recordAudioFromStream(audioStream);
-      
+
       // Transcribe speech
-      const transcribedText = await transcribeSpeech();
-      
+      let transcribedText: string;
+      try {
+        transcribedText = await transcribeSpeech();
+      } catch (speechError) {
+        const message = speechError instanceof Error ? speechError.message : 'Speech recognition failed';
+        setStatusMessage(message);
+        return;
+      }
+
       // Check if "hello" was said
-      if (!transcribedText.toLowerCase().includes('hello') && 
+      if (!transcribedText.toLowerCase().includes('hello') &&
           !transcribedText.toLowerCase().includes('hi') &&
           !transcribedText.toLowerCase().includes('hey')) {
-        alert('Please say "hello", "hi", or "hey"');
-        setStatusMessage('');
+        setStatusMessage('Please say "hello", "hi", or "hey"');
         return;
       }
 
       // Extract voice features
       const voiceFeatures = await extractVoiceFeatures(audioBuffer);
-      
+
       // Analyze voice context
       const voiceContext = analyzeVoiceContext(audioBuffer, transcribedText);
 
       setStatusMessage('Voice captured successfully!');
       onCaptured(voiceFeatures, voiceContext);
     } catch (error) {
-      console.error('Error capturing voice:', error);
-      setStatusMessage('Error capturing voice');
-      alert('Error capturing voice. Please try again.');
+      const message = error instanceof Error ? error.message : 'Error capturing voice';
+      setStatusMessage(message);
     }
   };
 
@@ -147,54 +152,52 @@ export const useVoiceCapture = () => {
 
   const transcribeSpeech = async (): Promise<string> => {
     // Use Web Speech API for transcription
-    return new Promise((resolve) => {
-      if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
-        // Fallback: return "hello" if speech recognition is not available
-        resolve('hello');
+    return new Promise((resolve, reject) => {
+      if (!window.SpeechRecognition && !window.webkitSpeechRecognition) {
+        reject(new Error('Speech recognition is not supported in this browser. Please use Chrome or Edge.'));
         return;
       }
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-      const recognition = new SpeechRecognition();
-      
+      const SpeechRecognitionCtor = window.SpeechRecognition || window.webkitSpeechRecognition!;
+      const recognition = new SpeechRecognitionCtor();
+
       recognition.continuous = false;
       recognition.interimResults = false;
       recognition.lang = 'en-US';
 
-      let transcript = '';
+      let resolved = false;
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      recognition.onresult = (event: any) => {
-        transcript = event.results[0][0].transcript;
-        resolve(transcript);
+      recognition.onresult = (event: SpeechRecognitionEvent) => {
+        if (!resolved) {
+          resolved = true;
+          resolve(event.results[0][0].transcript);
+        }
       };
 
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      recognition.onerror = (event: any) => {
-        console.error('Speech recognition error:', event.error);
-        // Fallback to "hello" if recognition fails
-        resolve('hello');
+      recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
+        if (!resolved) {
+          resolved = true;
+          reject(new Error(`Speech recognition error: ${event.error}`));
+        }
       };
 
       recognition.onend = () => {
-        if (!transcript) {
-          resolve('hello'); // Fallback
+        if (!resolved) {
+          resolved = true;
+          reject(new Error('No speech detected. Please try speaking louder or closer to the microphone.'));
         }
       };
 
-      // Note: Web Speech API requires direct microphone access, not AudioBuffer
-      // For now, we'll use a workaround by starting recognition separately
-      // In a real implementation, you'd want to use a proper speech-to-text API
       recognition.start();
-      
-      // Timeout fallback
+
+      // Timeout
       setTimeout(() => {
-        if (!transcript) {
+        if (!resolved) {
+          resolved = true;
           recognition.stop();
-          resolve('hello');
+          reject(new Error('Speech recognition timed out. Please try again.'));
         }
-      }, 3000);
+      }, 5000);
     });
   };
 

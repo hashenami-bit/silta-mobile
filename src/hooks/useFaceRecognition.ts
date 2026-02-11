@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import * as faceapi from 'face-api.js';
 import type { Profile } from '../types';
+import { showToast } from '../utils/toast';
 
 export const useFaceRecognition = (profiles: Profile[]) => {
   const [isScanning, setIsScanning] = useState(false);
@@ -11,7 +12,7 @@ export const useFaceRecognition = (profiles: Profile[]) => {
     onRecognized: (person: Profile) => void
   ) => {
     if (profiles.length === 0) {
-      alert("No profiles added yet!");
+      showToast('No profiles added yet!', 'info');
       return;
     }
 
@@ -41,12 +42,12 @@ export const useFaceRecognition = (profiles: Profile[]) => {
           return;
         }
       } else {
-        alert("Face detected, but not recognized.");
+        showToast('Face detected, but not recognized.', 'info');
         setIsScanning(false);
         setStatusMessage("");
       }
     } else {
-      alert("No face detected in frame.");
+      showToast('No face detected in frame.', 'error');
       setIsScanning(false);
       setStatusMessage("");
     }

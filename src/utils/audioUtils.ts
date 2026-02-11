@@ -97,23 +97,68 @@ function calculateSimpleMFCC(samples: Float32Array): Float32Array {
 }
 
 /**
- * Simple FFT implementation
+ * Cooley-Tukey radix-2 FFT - O(N log N) instead of O(N²)
+ * Input length must be a power of 2; pads with zeros if needed.
+ * Returns magnitude spectrum.
  */
 function simpleFFT(samples: Float32Array): Float32Array {
-  const N = samples.length;
-  const output = new Float32Array(N);
-  
-  for (let k = 0; k < N; k++) {
-    let real = 0;
-    let imag = 0;
-    for (let n = 0; n < N; n++) {
-      const angle = (2 * Math.PI * k * n) / N;
-      real += samples[n] * Math.cos(angle);
-      imag -= samples[n] * Math.sin(angle);
+  // Pad to next power of 2
+  let N = 1;
+  while (N < samples.length) N <<= 1;
+
+  const real = new Float32Array(N);
+  const imag = new Float32Array(N);
+  real.set(samples);
+
+  // Bit-reversal permutation
+  for (let i = 1, j = 0; i < N; i++) {
+    let bit = N >> 1;
+    while (j & bit) {
+      j ^= bit;
+      bit >>= 1;
     }
-    output[k] = Math.sqrt(real * real + imag * imag);
+    j ^= bit;
+    if (i < j) {
+      let tmp = real[i]; real[i] = real[j]; real[j] = tmp;
+      tmp = imag[i]; imag[i] = imag[j]; imag[j] = tmp;
+    }
   }
-  
+
+  // Cooley-Tukey butterfly
+  for (let len = 2; len <= N; len <<= 1) {
+    const halfLen = len >> 1;
+    const angle = (2 * Math.PI) / len;
+    const wReal = Math.cos(angle);
+    const wImag = -Math.sin(angle);
+
+    for (let i = 0; i < N; i += len) {
+      let curReal = 1;
+      let curImag = 0;
+
+      for (let j = 0; j < halfLen; j++) {
+        const u = i + j;
+        const v = u + halfLen;
+
+        const tReal = curReal * real[v] - curImag * imag[v];
+        const tImag = curReal * imag[v] + curImag * real[v];
+
+        real[v] = real[u] - tReal;
+        imag[v] = imag[u] - tImag;
+        real[u] += tReal;
+        imag[u] += tImag;
+
+        const nextReal = curReal * wReal - curImag * wImag;
+        curImag = curReal * wImag + curImag * wReal;
+        curReal = nextReal;
+      }
+    }
+  }
+
+  // Compute magnitudes
+  const output = new Float32Array(N);
+  for (let i = 0; i < N; i++) {
+    output[i] = Math.sqrt(real[i] * real[i] + imag[i] * imag[i]);
+  }
   return output;
 }
 
