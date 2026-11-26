@@ -1,15 +1,20 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
-import App from './App.tsx'
-import { ErrorBoundary } from './components/ErrorBoundary.tsx'
-import { ToastContainer } from './components/Toast.tsx'
+import { AppProvider } from './app/AppProvider'
+import { ErrorBoundary } from './app/ErrorBoundary'
+import { SiltaApp } from './app/SiltaApp'
+import { getDb } from './lib/db'
+import { registerPwa } from './pwa'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <ErrorBoundary>
-      <App />
-      <ToastContainer />
-    </ErrorBoundary>
+    <AppProvider db={getDb()}>
+      <ErrorBoundary>
+        <SiltaApp />
+      </ErrorBoundary>
+    </AppProvider>
   </StrictMode>,
 )
+
+registerPwa()
