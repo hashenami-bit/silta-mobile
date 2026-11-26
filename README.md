@@ -20,6 +20,12 @@ One codebase (React + TypeScript) becomes three things:
 
 Please treat this as a test build for the team, not something to hand to families yet. See "Before real families use it" below.
 
+## Download the Android test build
+
+Get the APK (the Android install file) from the [Releases page](https://github.com/hashenami-bit/silta-mobile/releases). Open that page on the phone, download the `.apk` and install it. It is a debug build for the team's own phones only.
+
+There is no iPhone download: an iPhone app has to be installed from a Mac with Xcode (see below).
+
 ## Product rules (please keep these)
 
 1. **A wrong name is worse than no name.** A name is shown only when the match is close, clearly better than the second-best person, and stable over several checks. Otherwise the app says it is not sure.
