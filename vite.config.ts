@@ -48,7 +48,20 @@ export default defineConfig({
   // node_modules may be a symlink to node_modules.nosync (iCloud helper); never watch that folder.
   server: { watch: { ignored: ['**/*.nosync/**', '**/android/**', '**/ios/**', '**/dist/**'] } },
   // The iPhone app supports iOS 15, so build for the Safari of that time.
-  build: { target: ['es2020', 'safari15'] },
+  build: {
+    target: ['es2020', 'safari15'],
+    rollupOptions: {
+      output: {
+        // The face libraries go in their own file. Vite scans the main file for dynamic imports, and its
+        // scanner misreads some minified library code (e.g. a variable named `of` before "/"): the build
+        // then fails with "Parse error" although the code is valid. Kept apart, that code is never scanned.
+        manualChunks(id) {
+          if (id.includes('face-api') || id.includes('@tensorflow')) return 'face'
+          return undefined
+        },
+      },
+    },
+  },
   plugins: [
     contentSecurityPolicy(),
     react({
