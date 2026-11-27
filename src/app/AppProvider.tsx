@@ -273,10 +273,14 @@ export function AppProvider({ db, children }: AppProviderProps) {
     },
     setPin: async (pin: string) => {
       if (settingsRef.current.pinLock && !unlockedRef.current) throw new Error('locked');
+      const gen = lockGen.current;
       const pinLock = await createPinLock(pin);
       await writeSettings({ pinLock });
       setSettings({ ...settingsRef.current, pinLock });
-      setUnlocked(true);
+      // Saving takes a moment. If the area was closed meanwhile (back pressed to Home, app put away),
+      // keep it closed: the new PIN is saved, but it must not open the area behind the person's back.
+      const top = stackRef.current[stackRef.current.length - 1];
+      if (gen === lockGen.current && isCaregiverRoute(top)) setUnlocked(true);
     },
     removePin: async () => {
       if (settingsRef.current.pinLock && !unlockedRef.current) throw new Error('locked');
