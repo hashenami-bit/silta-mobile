@@ -50,7 +50,29 @@ export const VOICE = {
   /** The best person must beat the second-best person by at least this much. */
   minMargin: 0.05,
   /** Longest voice note. */
-  noteMaxMs: 120000,
+  noteMaxMs: 30000,
+} as const;
+
+export const NOTES = {
+  /** Longest who-line (the sentence under the name). */
+  whoLineMaxChars: 80,
+  /** Written memories plus voice notes for one person. */
+  maxPerPerson: 10,
+  /** Longest written memory. */
+  textMaxChars: 200,
+} as const;
+
+export const LOCK = {
+  /** Digits in the caregiver PIN. */
+  pinLength: 4,
+  /** Wrong PINs in a row before a wait is asked for. */
+  maxTries: 5,
+  /** Length of that wait. */
+  waitMs: 30000,
+  /** The caregiver area closes when the app was out of sight for at least this long. */
+  backgroundMs: 60000,
+  /** Work done to scramble the PIN (PBKDF2 rounds). Higher = slower to guess. */
+  iterations: 150000,
 } as const;
 
 export const ALBUM = {

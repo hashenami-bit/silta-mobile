@@ -9,6 +9,7 @@ export const DEFAULT_SETTINGS: Settings = {
   browseOnly: false,
   voiceEnabled: false,
   defaultStarter: 'caregiver',
+  pinLock: null,
 };
 
 export interface SiltaDb {
@@ -30,6 +31,7 @@ export interface SiltaDb {
 
   /** Notes for one person, newest first. */
   listVoiceNotes(personId: Id): Promise<VoiceNote[]>;
+  /** Insert or replace by id (also used to change who may hear a note). */
   addVoiceNote(note: VoiceNote): Promise<void>;
   deleteVoiceNote(id: Id): Promise<void>;
 

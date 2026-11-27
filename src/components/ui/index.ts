@@ -29,6 +29,8 @@ export { Panel } from './Panel';
 export type { PanelProps } from './Panel';
 export { PersonAvatar } from './PersonAvatar';
 export type { PersonAvatarProps } from './PersonAvatar';
+export { PinPad } from './PinPad';
+export type { PinPadProps } from './PinPad';
 export { PrimaryButton } from './PrimaryButton';
 export type { PrimaryButtonProps } from './PrimaryButton';
 export { Screen } from './Screen';

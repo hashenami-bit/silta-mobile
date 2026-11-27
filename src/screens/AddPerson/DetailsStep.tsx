@@ -1,6 +1,7 @@
 import { useApp } from '../../app/appContext';
-import { Card, ChoiceTile, Field, TextAreaField } from '../../components/ui';
+import { Card, ChoiceTile, Field } from '../../components/ui';
 import { KINSHIP_KEYS, introduce, kinshipLabel } from '../../i18n';
+import { NOTES } from '../../lib/config';
 import { kinshipOf } from './draft';
 import type { Draft, DraftUpdater } from './draft';
 
@@ -47,19 +48,57 @@ export function DetailsStep({ draft, update }: Props) {
           onChange={(v) => update({ kinCustom: v })}
         />
       ) : null}
-      <TextAreaField
-        label={t('add.note.label')}
-        hint={t('add.note.hint')}
-        optional
-        value={draft.notes}
-        onChange={(v) => update({ notes: v })}
-      />
+      <div>
+        <Field
+          label={t('add.whoLine.label')}
+          hint={t('add.whoLine.hint')}
+          optional
+          maxLength={NOTES.whoLineMaxChars}
+          value={draft.whoLine}
+          onChange={(v) => update({ whoLine: v.slice(0, NOTES.whoLineMaxChars) })}
+        />
+        <p className="mt-1 text-caption text-ink-soft">
+          {t('add.whoLine.count', { count: draft.whoLine.length, max: NOTES.whoLineMaxChars })}
+        </p>
+      </div>
       {name ? (
         <Card>
           <p className="text-caption font-semibold text-ink-soft">{t('add.preview')}</p>
           <p className="mt-1 font-display text-title text-ink">{introduce(lang, name, kinshipOf(draft))}</p>
+          {draft.whoLine.trim() ? <p className="mt-2 break-words text-lead text-ink">{draft.whoLine.trim()}</p> : null}
         </Card>
       ) : null}
+      <div className="space-y-4">
+        <div>
+          <h3 className="font-display text-lead text-ink">{t('add.more.title')}</h3>
+          <p className="mt-1 text-caption text-ink-soft">{t('add.more.hint')}</p>
+        </div>
+        <Field
+          label={t('add.birthday.label')}
+          optional
+          type="date"
+          value={draft.birthday}
+          onChange={(v) => update({ birthday: v })}
+        />
+        <Field
+          label={t('add.phone.label')}
+          optional
+          type="tel"
+          inputMode="tel"
+          maxLength={20}
+          placeholder={t('add.phone.placeholder')}
+          value={draft.phone}
+          onChange={(v) => update({ phone: v })}
+        />
+        <Field
+          label={t('add.city.label')}
+          optional
+          maxLength={60}
+          placeholder={t('add.city.placeholder')}
+          value={draft.city}
+          onChange={(v) => update({ city: v })}
+        />
+      </div>
     </div>
   );
 }

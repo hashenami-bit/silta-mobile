@@ -1,10 +1,10 @@
-import { ChevronRight, Plus, Users } from 'lucide-react';
+import { ChevronRight, KeyRound, Plus, Users } from 'lucide-react';
 import { useApp } from '../app/appContext';
-import { BottomBar, Card, EmptyState, PersonAvatar, PrimaryButton, Screen } from '../components/ui';
+import { BottomBar, Card, EmptyState, Panel, PersonAvatar, PrimaryButton, Screen, TextButton } from '../components/ui';
 import { kinshipLabel } from '../i18n';
 
 export function PeopleScreen() {
-  const { t, lang, people, navigate } = useApp();
+  const { t, lang, people, settings, navigate } = useApp();
   const addPerson = () => navigate({ name: 'addPerson' });
 
   return (
@@ -22,6 +22,16 @@ export function PeopleScreen() {
           />
         ) : (
           <ul className="space-y-3">
+            {settings.pinLock === null ? (
+              <li>
+                <Panel tone="river">
+                  <p>{t('people.pinHint')}</p>
+                  <TextButton icon={<KeyRound />} className="-ml-2 mt-1" onClick={() => navigate({ name: 'pin' })}>
+                    {t('settings.pin.set')}
+                  </TextButton>
+                </Panel>
+              </li>
+            ) : null}
             {people.map((p) => (
               <li key={p.id}>
                 <Card

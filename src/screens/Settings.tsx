@@ -1,4 +1,4 @@
-import { CircleHelp, Trash2 } from 'lucide-react';
+import { CircleHelp, KeyRound, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useApp } from '../app/appContext';
 import { BottomBar, Card, ChoiceTile, ConfirmDialog, DangerButton, Panel, Screen, SecondaryButton, Switch } from '../components/ui';
@@ -23,9 +23,10 @@ const STARTERS: Array<{ value: SessionStarter; label: TextKey }> = [
 type History = { status: 'loading' } | { status: 'error' } | { status: 'ready'; entries: SessionLogEntry[] };
 
 export function SettingsScreen() {
-  const { t, lang, settings, updateSettings, clearAllData, notify, navigate, db } = useApp();
+  const { t, lang, settings, updateSettings, clearAllData, removePin, notify, navigate, db } = useApp();
   const [history, setHistory] = useState<History>({ status: 'loading' });
   const [confirming, setConfirming] = useState(false);
+  const [confirmingPin, setConfirmingPin] = useState(false);
   const [failed, setFailed] = useState(false);
   const engineInfo = getFaceEngineInfo();
 
@@ -64,6 +65,18 @@ export function SettingsScreen() {
     }
   }
 
+  async function dropPin() {
+    setConfirmingPin(false);
+    setFailed(false);
+    try {
+      await removePin();
+      notify(t('toast.pinRemoved'), 'success');
+    } catch {
+      setFailed(true);
+    }
+  }
+
+  const hasPin = settings.pinLock !== null;
   const counts = { album: 0, face: 0, voice: 0 };
   if (history.status === 'ready') {
     for (const e of history.entries) counts[e.type] += 1;
@@ -107,6 +120,19 @@ export function SettingsScreen() {
             onChange={(v) => void change({ voiceEnabled: v })}
           />
         </div>
+
+        <Card className="space-y-3">
+          <h2 className="font-display text-lead text-ink">{t('settings.pin.title')}</h2>
+          <p className="text-body text-ink">{t(hasPin ? 'settings.pin.on' : 'settings.pin.off')}</p>
+          <SecondaryButton icon={<KeyRound />} onClick={() => navigate({ name: 'pin' })}>
+            {t(hasPin ? 'settings.pin.change' : 'settings.pin.set')}
+          </SecondaryButton>
+          {hasPin ? (
+            <DangerButton quiet onClick={() => setConfirmingPin(true)}>
+              {t('settings.pin.remove')}
+            </DangerButton>
+          ) : null}
+        </Card>
 
         <Card className="space-y-3">
           <h2 className="font-display text-lead text-ink">{t('settings.starter')}</h2>
@@ -176,6 +202,15 @@ export function SettingsScreen() {
         confirmLabel={t('settings.clear.confirm')}
         onConfirm={() => void clearAll()}
         onCancel={() => setConfirming(false)}
+      />
+      <ConfirmDialog
+        open={confirmingPin}
+        danger
+        title={t('settings.pin.remove.title')}
+        body={t('settings.pin.remove.body')}
+        confirmLabel={t('settings.pin.remove.confirm')}
+        onConfirm={() => void dropPin()}
+        onCancel={() => setConfirmingPin(false)}
       />
       <BottomBar />
     </Screen>

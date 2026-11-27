@@ -17,7 +17,11 @@ function person(n: number, photos = 2): Person {
     id: `p${n}`,
     name: `Name${n}`,
     kinship: { preset: 'friend', custom: '' },
-    notes: '',
+    whoLine: '',
+    birthday: '',
+    phone: '',
+    city: '',
+    memoryNotes: [],
     photos: Array.from({ length: photos }, (_, i) => ({
       id: `p${n}-ph${i}`,
       dataUrl: `data:p${n}-${i}`,

@@ -18,7 +18,8 @@ Import everything from `src/components/ui` (relative path from your file). Read 
 | `ChoiceTile` | `selected?`, `onSelect`, `ariaLabel?`, `tone?: 'default'\|'praise'`, `disabled?` | |
 | `PersonAvatar` | `person?` or `name?` + `src?`, `size: 'list'\|'detail'\|'card'` | |
 | `Panel` | `tone: 'lantern'\|'river'`, `title?`, `role?` | Soft info panel. Never red. |
-| `MatchCard` | `person`, `actions?` | Photo, big name, introduce sentence, note. |
+| `PinPad` | `value`, `onChange`, `length`, `disabled?` | Dots (digits are never shown) and a 3×4 grid of `min-h-tap-lg` keys; erase key has icon + label `lock.erase`. |
+| `MatchCard` | `person`, `actions?` | Photo, big name, introduce sentence, who-line, one changing memory (only "show to elder" ones), listen button for a family voice message. |
 | `UnsureCard` | `sentence?`, `actions?` | Default sentence is `recognize.unsure`. |
 | `EmptyState` | `icon`, `title`, `body`, `action?`, `role?` | Pass a plain lucide `<Icon />`. |
 | `DeviceProblem` | `kind: 'camera'\|'mic'`, `error: DeviceError`, `onRetry`, `onBack` | Camera/mic refused or broken. |

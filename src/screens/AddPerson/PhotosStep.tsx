@@ -1,6 +1,6 @@
 import { newId } from '../../lib/id';
 import { Camera, SwitchCamera, X } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useEffectEvent, useRef, useState } from 'react';
 import { useApp } from '../../app/appContext';
 import {
   DeviceOnPill,
@@ -41,8 +41,14 @@ function loadImage(dataUrl: string): Promise<HTMLImageElement> {
 }
 
 export function PhotosStep({ name, photos, setPhotos }: Props) {
-  const { t, lang } = useApp();
+  const { t, lang, screenCovered } = useApp();
   const { state, videoRef, start, stop, switchFacing } = useCamera();
+  // The PIN screen came over this step (phone was put away): the camera must not run unseen.
+  // It stays off afterwards until the caregiver taps the camera button again.
+  const stopUnseen = useEffectEvent(() => stop());
+  useEffect(() => {
+    if (screenCovered) stopUnseen();
+  }, [screenCovered]);
   const [checking, setChecking] = useState(false);
   const [noFace, setNoFace] = useState(false);
   const [loadFailed, setLoadFailed] = useState(false);

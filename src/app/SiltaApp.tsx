@@ -10,8 +10,10 @@ import { InstallHintScreen } from '../screens/InstallHint';
 import { LanguageScreen } from '../screens/Language';
 import { PeopleScreen } from '../screens/People';
 import { PersonDetailScreen } from '../screens/PersonDetail';
+import { PinSetupScreen } from '../screens/PinSetup';
 import { RecognizeScreen } from '../screens/Recognize';
 import { SettingsScreen } from '../screens/Settings';
+import { UnlockScreen } from '../screens/Unlock';
 import { VoiceScreen } from '../screens/Voice';
 import { useApp } from './appContext';
 import { shouldSuggestHomeScreen } from './installHint';
@@ -35,13 +37,15 @@ function CurrentScreen({ route }: { route: Route }) {
       return <AddPersonScreen key={route.editId ?? 'new'} editId={route.editId} />;
     case 'settings':
       return <SettingsScreen />;
+    case 'pin':
+      return <PinSetupScreen />;
     case 'help':
       return <HelpScreen />;
   }
 }
 
 export function SiltaApp() {
-  const { ready, loadFailed, settings, lang, route } = useApp();
+  const { ready, loadFailed, settings, lang, route, screenCovered } = useApp();
   // iPhone browser tab only: ask to add Silta to the Home Screen before any family data is entered.
   const [suggestHomeScreen, setSuggestHomeScreen] = useState(shouldSuggestHomeScreen);
 
@@ -62,9 +66,16 @@ export function SiltaApp() {
 
   if (suggestHomeScreen) return <InstallHintScreen onContinue={() => setSuggestHomeScreen(false)} />;
 
+  // With a PIN set, caregiver screens wait behind the PIN screen. The screen underneath stays loaded
+  // but out of sight, so a half-filled form is still there after the PIN is entered again.
+  const gated = screenCovered;
+
   return (
     <>
-      <CurrentScreen route={route} />
+      {gated ? <UnlockScreen /> : null}
+      <div hidden={gated} inert={gated}>
+        <CurrentScreen route={route} />
+      </div>
       <ToastHost />
     </>
   );

@@ -19,7 +19,11 @@ function person(id: string, descriptors: Float32Array[]): Person {
     id,
     name: id,
     kinship: { preset: 'friend', custom: '' },
-    notes: '',
+    whoLine: '',
+    birthday: '',
+    phone: '',
+    city: '',
+    memoryNotes: [],
     photos: descriptors.map((descriptor, i) => ({
       id: `${id}-p${i}`,
       dataUrl: '',
