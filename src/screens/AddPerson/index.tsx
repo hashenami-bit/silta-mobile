@@ -11,6 +11,7 @@ import {
   TextButton,
 } from '../../components/ui';
 import { FACE } from '../../lib/config';
+import { cleanWhoLine } from '../../lib/notes';
 import type { Id, Person } from '../../lib/types';
 import { ConsentStep } from './ConsentStep';
 import { DetailsStep } from './DetailsStep';
@@ -89,7 +90,12 @@ function Wizard({ initial }: { initial: Person | null }) {
       id: base ? base.id : freshId,
       name: draft.name.trim(),
       kinship: kinshipOf(draft),
-      notes: draft.notes.trim(),
+      whoLine: cleanWhoLine(draft.whoLine),
+      birthday: /^\d{4}-\d{2}-\d{2}$/.test(draft.birthday) ? draft.birthday : '',
+      phone: draft.phone.trim(),
+      city: draft.city.trim(),
+      // Taken from the newest saved copy: memories can change on the person page while this form is open.
+      memoryNotes: base ? (people.find((p) => p.id === base.id)?.memoryNotes ?? base.memoryNotes) : [],
       photos: draft.photos,
       voiceSamples: draft.voiceSamples,
       consent: base

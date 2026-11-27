@@ -14,6 +14,18 @@ export interface ToastMessage {
   kind: ToastKind;
 }
 
+/**
+ * open:  right PIN, the caregiver area is open now.
+ * wrong: PIN did not match.
+ * wait:  too many tries; no more until waitMs have passed.
+ * again: the area was closed again while the PIN was being checked (e.g. "back" was pressed): ask again quietly.
+ */
+export type UnlockResult =
+  | { kind: 'open' }
+  | { kind: 'wrong' }
+  | { kind: 'wait'; waitMs: number }
+  | { kind: 'again' };
+
 export interface AppContextValue {
   /** False until settings and people have been read from storage. */
   ready: boolean;
@@ -53,6 +65,19 @@ export interface AppContextValue {
 
   /** Direct storage access for voice notes and reading the session history. */
   db: SiltaDb;
+
+  /** True after the caregiver entered the PIN. Goes back to false on any screen that is not for the caregiver. */
+  unlocked: boolean;
+  /** True while the PIN screen covers the current screen. Screens use it to switch off the camera. */
+  screenCovered: boolean;
+  /** Milliseconds until the next PIN try is allowed (0 = now). */
+  pinWaitMs(): number;
+  /** Checks the PIN and opens the caregiver area when it is right. */
+  unlock(pin: string): Promise<UnlockResult>;
+  /** Sets or changes the PIN. With a PIN already set, the caregiver area must be open. */
+  setPin(pin: string): Promise<void>;
+  /** Removes the PIN. The caregiver area must be open. */
+  removePin(): Promise<void>;
 
   /** Short message shown by the toast host, or null. */
   toast: ToastMessage | null;

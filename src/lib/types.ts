@@ -53,11 +53,31 @@ export interface Consent {
   agreedAt: number;
 }
 
+/** Who may see a note: the elder too, or only the caregiver. */
+export type NoteVisibility = 'elder' | 'caregiver';
+
+/** One short written memory about a person, e.g. "Siz uni maktabga olib borgansiz". */
+export interface MemoryNote {
+  id: Id;
+  text: string;
+  visibility: NoteVisibility;
+  createdAt: number;
+}
+
 export interface Person {
   id: Id;
   name: string;
   kinship: Kinship;
-  notes: string;
+  /** One sentence shown under the name when the person is recognised. At most NOTES.whoLineMaxChars. */
+  whoLine: string;
+  /** 'YYYY-MM-DD', or '' when not given. */
+  birthday: string;
+  /** '' when not given. */
+  phone: string;
+  /** '' when not given. */
+  city: string;
+  /** Written memories. Together with voice notes: at most NOTES.maxPerPerson. */
+  memoryNotes: MemoryNote[];
   /** FACE.photosMin to FACE.photosMax photos. photos[0] is the main picture. */
   photos: PersonPhoto[];
   /** Empty if no voice was recorded. */
@@ -73,7 +93,16 @@ export interface VoiceNote {
   audio: ArrayBuffer;
   mimeType: string;
   durationMs: number;
+  /** 'elder' = can be played on the recognition card. */
+  visibility: NoteVisibility;
   createdAt: number;
+}
+
+/** The saved form of the caregiver PIN. The PIN itself is never stored. */
+export interface PinLock {
+  salt: string;
+  hash: string;
+  iterations: number;
 }
 
 export interface Settings {
@@ -85,6 +114,8 @@ export interface Settings {
   voiceEnabled: boolean;
   /** Who usually starts sessions on this phone; written to the session history. */
   defaultStarter: SessionStarter;
+  /** null = no PIN: the caregiver area is open to anyone. */
+  pinLock: PinLock | null;
 }
 
 export type SessionType = 'album' | 'face' | 'voice';

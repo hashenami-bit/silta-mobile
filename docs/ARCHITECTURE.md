@@ -11,6 +11,9 @@ Silta is an offline, on-device family-connection app for people with early-to-mo
 5. **Nothing starts by itself.** Camera and microphone start only from a visible button and always show that they are on.
 6. **Two languages.** Every visible string comes from `src/i18n` (`uz` Latin and `ru`). No hard-coded text in screens.
 7. **Elder-friendly UI.** Large text (body ≥ 18px), big touch targets (≥ 56px), every icon has a text label, high contrast, calm motion.
+8. **Caregiver-only notes stay with the caregiver.** Anything the elder sees or hears about a person goes through `elderNotes()` / `elderVoiceNotes()` in `src/lib/notes`. Never read `person.memoryNotes` directly in an elder screen.
+
+9. **Caregiver screens sit behind the PIN.** People, person pages, add/edit person, Settings and PIN setup are listed in `isCaregiverRoute()` (`src/app/navigation.ts`). A new screen that shows or changes caregiver data must be added there. The lock is a gentle barrier for the elder, not protection against someone with tools: never describe it as encryption or as making data safe from theft.
 
 ## Layers
 
@@ -21,11 +24,13 @@ src/app/*                navigation + shared state (AppProvider, useApp)
 src/i18n/*               uz.ts (key list), ru.ts (same keys), index.ts (translate helpers)
 src/lib/types.ts         all shared data types
 src/lib/config.ts        every tuning number in one place
-src/lib/db/*             IndexedDB storage (people, settings, session log, voice notes)
+src/lib/db/*             IndexedDB storage (people, settings, session log, voice notes); migrate.ts upgrades old records on read
 src/lib/face/*           model loading, face description, strict match rule
 src/lib/camera/*         camera start/stop/switch with error states
 src/lib/voice/*          offline voice print, strict match rule, voice-note recorder
 src/lib/album/*          Family Album session rules (pure logic)
+src/lib/lock/*           caregiver PIN: scrambling, checking, wait after wrong tries (pure logic)
+src/lib/notes/*          notes about a person: who may see a note, which one to show, limits (pure logic)
 public/models/*          AI model files shipped inside the app
 android/*                Capacitor Android project
 ```

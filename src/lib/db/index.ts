@@ -4,7 +4,9 @@ import { openDB } from 'idb';
 import type { DBSchema, IDBPDatabase } from 'idb';
 import { DEFAULT_SETTINGS } from './api';
 import type { SiltaDb } from './api';
-import type { Id, Person, SessionLogEntry, Settings, VoiceNote } from '../types';
+import { upgradePerson, upgradeVoiceNote } from './migrate';
+import type { StoredPerson, StoredVoiceNote } from './migrate';
+import type { Id, SessionLogEntry, Settings } from '../types';
 
 export { DEFAULT_SETTINGS };
 export type { SiltaDb };
@@ -14,7 +16,7 @@ const DB_VERSION = 1;
 const SETTINGS_KEY = 'main';
 
 interface SiltaSchema extends DBSchema {
-  people: { key: Id; value: Person };
+  people: { key: Id; value: StoredPerson };
   settings: { key: string; value: Settings };
   sessionLog: {
     key: Id;
@@ -23,7 +25,7 @@ interface SiltaSchema extends DBSchema {
   };
   voiceNotes: {
     key: Id;
-    value: VoiceNote;
+    value: StoredVoiceNote;
     indexes: { personId: Id };
   };
 }
@@ -98,14 +100,15 @@ export function createDb(name: string): SiltaDb {
   return {
     listPeople() {
       return run(async (db) => {
-        const people = await db.getAll('people');
+        const people = (await db.getAll('people')).map(upgradePerson);
         return people.sort((a, b) => a.createdAt - b.createdAt);
       });
     },
 
     getPerson(id) {
       return run(async (db) => {
-        return db.get('people', id);
+        const stored = await db.get('people', id);
+        return stored ? upgradePerson(stored) : undefined;
       });
     },
 
@@ -162,7 +165,7 @@ export function createDb(name: string): SiltaDb {
 
     listVoiceNotes(personId) {
       return run(async (db) => {
-        const notes = await db.getAllFromIndex('voiceNotes', 'personId', personId);
+        const notes = (await db.getAllFromIndex('voiceNotes', 'personId', personId)).map(upgradeVoiceNote);
         return notes.sort((a, b) => b.createdAt - a.createdAt);
       });
     },

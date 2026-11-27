@@ -1,6 +1,8 @@
 import 'fake-indexeddb/auto';
 import { describe, expect, it } from 'vitest';
 import { createDb, DEFAULT_SETTINGS } from './index';
+import { upgradePerson, upgradeVoiceNote } from './migrate';
+import type { StoredPerson } from './migrate';
 import type { Person, SessionLogEntry, VoiceNote } from '../types';
 
 let counter = 0;
@@ -11,7 +13,11 @@ function makePerson(id: string, createdAt: number, extra: Partial<Person> = {}):
     id,
     name: `Name ${id}`,
     kinship: { preset: 'daughter', custom: '' },
-    notes: '',
+    whoLine: '',
+    birthday: '',
+    phone: '',
+    city: '',
+    memoryNotes: [],
     photos: [
       {
         id: `${id}-p1`,
@@ -35,6 +41,7 @@ function makeNote(id: string, personId: string, createdAt: number, bytes: number
     audio: new Uint8Array(bytes).buffer,
     mimeType: 'audio/webm',
     durationMs: 1000,
+    visibility: 'elder',
     createdAt,
   };
 }
@@ -92,7 +99,12 @@ describe('people', () => {
 
   it('deletePerson removes that person and their voice notes only', async () => {
     const db = freshDb();
-    await db.savePerson(makePerson('a', 100));
+    await db.savePerson(
+      makePerson('a', 100, {
+        phone: '+998 90 000 00 00',
+        memoryNotes: [{ id: 'm1', text: 'private', visibility: 'caregiver', createdAt: 1 }],
+      }),
+    );
     await db.savePerson(makePerson('b', 200));
     await db.addVoiceNote(makeNote('n1', 'a', 1, [1]));
     await db.addVoiceNote(makeNote('n2', 'a', 2, [2]));
@@ -123,8 +135,8 @@ describe('settings', () => {
 
   it('saves and reads settings', async () => {
     const db = freshDb();
-    await db.saveSettings({ lang: 'ru', browseOnly: true, voiceEnabled: true, defaultStarter: 'elder' });
-    expect(await db.getSettings()).toEqual({ lang: 'ru', browseOnly: true, voiceEnabled: true, defaultStarter: 'elder' });
+    await db.saveSettings({ lang: 'ru', browseOnly: true, voiceEnabled: true, defaultStarter: 'elder', pinLock: null });
+    expect(await db.getSettings()).toEqual({ lang: 'ru', browseOnly: true, voiceEnabled: true, defaultStarter: 'elder', pinLock: null });
   });
 
   it('fills missing fields from defaults for partial saved records', async () => {
@@ -177,7 +189,7 @@ describe('clearAll', () => {
     await db.savePerson(makePerson('a', 1));
     await db.addVoiceNote(makeNote('n', 'a', 1, [1]));
     await db.addSessionLog(makeLog('l', 1));
-    await db.saveSettings({ lang: 'ru', browseOnly: true, voiceEnabled: true, defaultStarter: 'elder' });
+    await db.saveSettings({ lang: 'ru', browseOnly: true, voiceEnabled: true, defaultStarter: 'elder', pinLock: null });
 
     await db.clearAll();
 
@@ -198,5 +210,65 @@ describe('clearAll', () => {
     expect(log).toHaveLength(2);
     expect(log.find((e) => e.id === 'l1')?.personId).toBeNull();
     expect(log.find((e) => e.id === 'l2')?.personId).toBe('b');
+  });
+});
+
+describe('records saved by an older version', () => {
+  function oldPerson(notes: string): StoredPerson {
+    const { whoLine, birthday, phone, city, memoryNotes, ...rest } = makePerson('old', 5);
+    void [whoLine, birthday, phone, city, memoryNotes];
+    return { ...rest, notes };
+  }
+
+  it('fills the new fields with empty values', () => {
+    const p = upgradePerson(oldPerson(''));
+    expect(p).toMatchObject({ whoLine: '', birthday: '', phone: '', city: '', memoryNotes: [] });
+    expect('notes' in p).toBe(false);
+  });
+
+  it('turns a short old note into the who-line', () => {
+    const p = upgradePerson(oldPerson('  Har yakshanba sizni ko\'rgani keladi.  '));
+    expect(p.whoLine).toBe("Har yakshanba sizni ko'rgani keladi.");
+    expect(p.memoryNotes).toEqual([]);
+  });
+
+  it('turns a long old note into a memory the elder can still see', () => {
+    const long = 'a'.repeat(120);
+    const p = upgradePerson(oldPerson(long));
+    expect(p.whoLine).toBe('');
+    expect(p.memoryNotes).toEqual([{ id: 'legacy-old', text: long, visibility: 'elder', createdAt: 5 }]);
+  });
+
+  it('leaves an up-to-date person unchanged', () => {
+    const now = makePerson('new', 7, { whoLine: 'Qo\'shningiz', city: 'Toshkent' });
+    expect(upgradePerson(now)).toEqual(now);
+  });
+
+  it('reads an old person from storage in the new shape', async () => {
+    const db = freshDb();
+    // An older app version wrote this record; the cast stands in for that version.
+    await db.savePerson(oldPerson('Qisqa eslatma') as unknown as Person);
+    const [listed] = await db.listPeople();
+    expect(listed.whoLine).toBe('Qisqa eslatma');
+    expect((await db.getPerson('old'))?.memoryNotes).toEqual([]);
+  });
+
+  it('keeps an old voice note for the caregiver only', async () => {
+    const { visibility, ...old } = makeNote('n', 'p', 1, [1]);
+    void visibility;
+    expect(upgradeVoiceNote(old).visibility).toBe('caregiver');
+    const db = freshDb();
+    await db.addVoiceNote(old as unknown as VoiceNote);
+    expect((await db.listVoiceNotes('p'))[0].visibility).toBe('caregiver');
+  });
+
+  it('addVoiceNote with the same id changes who may hear it', async () => {
+    const db = freshDb();
+    const note = makeNote('n', 'p', 1, [1]);
+    await db.addVoiceNote(note);
+    await db.addVoiceNote({ ...note, visibility: 'caregiver' });
+    const notes = await db.listVoiceNotes('p');
+    expect(notes).toHaveLength(1);
+    expect(notes[0].visibility).toBe('caregiver');
   });
 });

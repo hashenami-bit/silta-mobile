@@ -1,18 +1,31 @@
-import { VOICE } from '../../lib/config';
+import { NOTES, VOICE } from '../../lib/config';
 import { newId } from '../../lib/id';
 import { Mic, Play, Square, Trash2 } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useEffectEvent, useRef, useState } from 'react';
 import { useApp } from '../../app/appContext';
 import type { TextKey } from '../../i18n';
-import type { DeviceError, Person, VoiceNote } from '../../lib/types';
+import { notesLeft } from '../../lib/notes';
+import type { DeviceError, NoteVisibility, Person, VoiceNote } from '../../lib/types';
 import { MicError, startVoiceNote } from '../../lib/voice';
 import type { NoteRecorder } from '../../lib/voice/api';
-import { ConfirmDialog, DangerButton, DeviceOnPill, Panel, PrimaryButton, SecondaryButton } from '../ui';
+import { ConfirmDialog, DangerButton, DeviceOnPill, Panel, PrimaryButton, SecondaryButton, Switch } from '../ui';
+import { useNotePlayer } from './useNotePlayer';
 
 const MIN_NOTE_MS = 500;
 
-export function VoiceNotesPanel({ person }: { person: Person }) {
+interface Props {
+  person: Person;
+  /** Written memories share the same limit. */
+  writtenCount: number;
+  /** Told how many voice notes are saved, after each load. */
+  onCount?: (count: number) => void;
+}
+
+export function VoiceNotesPanel({ person, writtenCount, onCount }: Props) {
   const { t, db, notify } = useApp();
+  const player = useNotePlayer();
+  // Kept out of the loading effect's inputs, so a new function from the parent never reloads the list.
+  const reportCount = useEffectEvent((count: number) => onCount?.(count));
   const [notes, setNotes] = useState<VoiceNote[] | null>(null);
   const [version, setVersion] = useState(0);
   const [loadFailed, setLoadFailed] = useState(false);
@@ -21,20 +34,10 @@ export function VoiceNotesPanel({ person }: { person: Person }) {
   const [seconds, setSeconds] = useState(0);
   const [micError, setMicError] = useState<DeviceError | null>(null);
   const [failed, setFailed] = useState(false);
-  const [playingId, setPlayingId] = useState<string | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
 
   const recorderRef = useRef<NoteRecorder | null>(null);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-  const urlRef = useRef<string | null>(null);
   const mountedRef = useRef(true);
-
-  function stopPlayback() {
-    audioRef.current?.pause();
-    audioRef.current = null;
-    if (urlRef.current) URL.revokeObjectURL(urlRef.current);
-    urlRef.current = null;
-  }
 
   useEffect(() => {
     mountedRef.current = true;
@@ -42,10 +45,6 @@ export function VoiceNotesPanel({ person }: { person: Person }) {
       mountedRef.current = false;
       recorderRef.current?.cancel();
       recorderRef.current = null;
-      audioRef.current?.pause();
-      audioRef.current = null;
-      if (urlRef.current) URL.revokeObjectURL(urlRef.current);
-      urlRef.current = null;
     };
   }, []);
 
@@ -56,9 +55,13 @@ export function VoiceNotesPanel({ person }: { person: Person }) {
         if (cancelled) return;
         setNotes(list);
         setLoadFailed(false);
+        reportCount(list.length);
       },
       () => {
-        if (!cancelled) setLoadFailed(true);
+        if (cancelled) return;
+        setLoadFailed(true);
+        // Storage did not answer: let written memories be added rather than leave the page stuck.
+        reportCount(0);
       },
     );
     return () => {
@@ -77,8 +80,7 @@ export function VoiceNotesPanel({ person }: { person: Person }) {
 
   async function startRecording() {
     if (recorderRef.current || starting) return;
-    stopPlayback();
-    setPlayingId(null);
+    player.stop();
     setMicError(null);
     setFailed(false);
     setStarting(true);
@@ -114,12 +116,21 @@ export function VoiceNotesPanel({ person }: { person: Person }) {
     try {
       const result = await recorder.stop();
       if (!mountedRef.current || result.durationMs < MIN_NOTE_MS) return;
+      // Count again from storage: a written memory may have been added while this was recording.
+      const [saved, voices] = await Promise.all([db.getPerson(person.id), db.listVoiceNotes(person.id)]);
+      if (notesLeft(saved?.memoryNotes.length ?? 0, voices.length) === 0) {
+        if (mountedRef.current) setVersion((v) => v + 1);
+        notify(t('memory.full', { max: NOTES.maxPerPerson }));
+        return;
+      }
       await db.addVoiceNote({
         id: newId(),
         personId: person.id,
         audio: result.audio,
         mimeType: result.mimeType,
         durationMs: result.durationMs,
+        // Stays with the caregiver until the switch on the row is turned on.
+        visibility: 'caregiver',
         createdAt: Date.now(),
       });
       if (!mountedRef.current) return;
@@ -132,36 +143,21 @@ export function VoiceNotesPanel({ person }: { person: Person }) {
     }
   }
 
-  function togglePlay(note: VoiceNote) {
-    const wasPlaying = playingId === note.id;
-    stopPlayback();
-    if (wasPlaying) {
-      setPlayingId(null);
-      return;
+  async function setVisibility(note: VoiceNote, visibility: NoteVisibility) {
+    setFailed(false);
+    try {
+      await db.addVoiceNote({ ...note, visibility });
+      if (mountedRef.current) setVersion((v) => v + 1);
+    } catch {
+      if (mountedRef.current) setFailed(true);
     }
-    const url = URL.createObjectURL(new Blob([note.audio], { type: note.mimeType }));
-    const audio = new Audio(url);
-    urlRef.current = url;
-    audioRef.current = audio;
-    const done = () => {
-      if (audioRef.current !== audio) return;
-      stopPlayback();
-      if (mountedRef.current) setPlayingId(null);
-    };
-    audio.addEventListener('ended', done);
-    audio.addEventListener('error', done);
-    setPlayingId(note.id);
-    audio.play().catch(done);
   }
 
   async function confirmDelete() {
     const id = deleteId;
     setDeleteId(null);
     if (!id) return;
-    if (playingId === id) {
-      stopPlayback();
-      setPlayingId(null);
-    }
+    if (player.playingId === id) player.stop();
     try {
       await db.deleteVoiceNote(id);
       if (mountedRef.current) setVersion((v) => v + 1);
@@ -170,16 +166,23 @@ export function VoiceNotesPanel({ person }: { person: Person }) {
     }
   }
 
+  const full = notes !== null && notesLeft(writtenCount, notes.length) === 0;
+
   return (
     <section className="space-y-4">
-      <h2 className="font-display text-title text-ink">{t('voiceNotes.title')}</h2>
+      <div>
+        <h2 className="font-display text-title text-ink">{t('voiceNotes.title')}</h2>
+        <p className="mt-1 text-caption text-ink-soft">
+          {t('voiceNotes.limit', { seconds: Math.round(VOICE.noteMaxMs / 1000) })}
+        </p>
+      </div>
 
       {notes && notes.length === 0 ? <p className="text-body text-ink-soft">{t('voiceNotes.empty')}</p> : null}
 
       {notes && notes.length > 0 ? (
         <ul className="space-y-3">
           {notes.map((note) => {
-            const playing = playingId === note.id;
+            const playing = player.playingId === note.id;
             const secs = Math.max(1, Math.round(note.durationMs / 1000));
             return (
               <li key={note.id} className="space-y-3 rounded-tile bg-surface p-4 shadow-lift">
@@ -187,11 +190,16 @@ export function VoiceNotesPanel({ person }: { person: Person }) {
                 <div className="grid grid-cols-1 gap-3">
                   <SecondaryButton
                     icon={playing ? <Square /> : <Play />}
-                    onClick={() => togglePlay(note)}
+                    onClick={() => player.toggle(note)}
                     aria-pressed={playing}
                   >
                     {t(playing ? 'voiceNotes.stop' : 'voiceNotes.play')}
                   </SecondaryButton>
+                  <Switch
+                    label={t('voiceNotes.share.label')}
+                    checked={note.visibility === 'elder'}
+                    onChange={(on) => void setVisibility(note, on ? 'elder' : 'caregiver')}
+                  />
                   <DangerButton quiet icon={<Trash2 />} onClick={() => setDeleteId(note.id)}>
                     {t('voiceNotes.delete')}
                   </DangerButton>
@@ -234,7 +242,11 @@ export function VoiceNotesPanel({ person }: { person: Person }) {
             {t('voiceNotes.stop')}
           </PrimaryButton>
         </div>
-      ) : (
+      ) : full ? (
+        <Panel tone="lantern" role="status">
+          {t('memory.full', { max: NOTES.maxPerPerson })}
+        </Panel>
+      ) : notes === null && !loadFailed ? null : (
         <SecondaryButton icon={<Mic />} disabled={starting} onClick={() => void startRecording()}>
           {t('voiceNotes.record')}
         </SecondaryButton>

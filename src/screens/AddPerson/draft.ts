@@ -10,7 +10,11 @@ export interface Draft {
   name: string;
   kinChoice: KinChoice;
   kinCustom: string;
-  notes: string;
+  whoLine: string;
+  /** 'YYYY-MM-DD' or ''. */
+  birthday: string;
+  phone: string;
+  city: string;
   photos: PersonPhoto[];
   voiceSamples: VoiceSample[];
 }
@@ -27,7 +31,10 @@ export function draftFromPerson(person: Person): Draft {
     name: person.name,
     kinChoice: preset ?? (custom.trim() ? 'other' : null),
     kinCustom: custom,
-    notes: person.notes,
+    whoLine: person.whoLine,
+    birthday: person.birthday,
+    phone: person.phone,
+    city: person.city,
     photos: person.photos,
     voiceSamples: person.voiceSamples,
   };
@@ -41,7 +48,10 @@ export function emptyDraft(caregiverName: string): Draft {
     name: '',
     kinChoice: null,
     kinCustom: '',
-    notes: '',
+    whoLine: '',
+    birthday: '',
+    phone: '',
+    city: '',
     photos: [],
     voiceSamples: [],
   };
